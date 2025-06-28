@@ -1,0 +1,222 @@
+import pygame
+import random
+import sys
+
+# Initialize pygame
+pygame.init()
+
+# Constants
+WIDTH, HEIGHT = 800, 600
+GRID_SIZE = 20
+PACMAN_SPEED = 5
+GHOST_SPEED = 3
+DOT_SIZE = 4
+WALL_COLOR = (0, 0, 255)  # Blue
+PACMAN_COLOR = (255, 255, 0)  # Yellow
+GHOST_COLOR = (255, 0, 0)  # Red
+DOT_COLOR = (255, 255, 255)  # White
+BG_COLOR = (0, 0, 0)  # Black
+
+# Set up the display
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("Simple Pac-Man")
+clock = pygame.time.Clock()
+
+# Create a simple maze (1 = wall, 0 = path)
+def create_maze(width, height):
+    maze = [[0 for _ in range(width // GRID_SIZE)] for _ in range(height // GRID_SIZE)]
+    
+    # Add border walls
+    for x in range(width // GRID_SIZE):
+        maze[0][x] = 1
+        maze[height // GRID_SIZE - 1][x] = 1
+    
+    for y in range(height // GRID_SIZE):
+        maze[y][0] = 1
+        maze[y][width // GRID_SIZE - 1] = 1
+    
+    # Add some random walls
+    for _ in range(50):
+        x = random.randint(2, (width // GRID_SIZE) - 3)
+        y = random.randint(2, (height // GRID_SIZE) - 3)
+        length = random.randint(3, 8)
+        direction = random.choice(["horizontal", "vertical"])
+        
+        if direction == "horizontal":
+            for i in range(min(length, (width // GRID_SIZE) - x - 1)):
+                maze[y][x + i] = 1
+        else:
+            for i in range(min(length, (height // GRID_SIZE) - y - 1)):
+                maze[y + i][x] = 1
+    
+    return maze
+
+# Create dots for Pac-Man to eat
+def create_dots(maze, width, height):
+    dots = []
+    for y in range(height // GRID_SIZE):
+        for x in range(width // GRID_SIZE):
+            if maze[y][x] == 0:  # If it's a path
+                dots.append((x * GRID_SIZE + GRID_SIZE // 2, 
+                             y * GRID_SIZE + GRID_SIZE // 2))
+    return dots
+
+# Main game function
+def game():
+    # Create maze and dots
+    maze = create_maze(WIDTH, HEIGHT)
+    dots = create_dots(maze, WIDTH, HEIGHT)
+    
+    # Pac-Man initial position (find a valid spot)
+    valid_positions = [(x, y) for y in range(1, HEIGHT // GRID_SIZE - 1) 
+                      for x in range(1, WIDTH // GRID_SIZE - 1) 
+                      if maze[y][x] == 0]
+    pacman_grid_pos = random.choice(valid_positions)
+    pacman_pos = [pacman_grid_pos[0] * GRID_SIZE + GRID_SIZE // 2, 
+                  pacman_grid_pos[1] * GRID_SIZE + GRID_SIZE // 2]
+    
+    # Ghost initial positions (find valid spots)
+    ghosts = []
+    for _ in range(4):  # 4 ghosts
+        ghost_grid_pos = random.choice(valid_positions)
+        while (ghost_grid_pos[0] * GRID_SIZE + GRID_SIZE // 2, 
+               ghost_grid_pos[1] * GRID_SIZE + GRID_SIZE // 2) == tuple(pacman_pos):
+            ghost_grid_pos = random.choice(valid_positions)
+        
+        ghosts.append({
+            'pos': [ghost_grid_pos[0] * GRID_SIZE + GRID_SIZE // 2, 
+                    ghost_grid_pos[1] * GRID_SIZE + GRID_SIZE // 2],
+            'dir': random.choice([(1, 0), (-1, 0), (0, 1), (0, -1)])
+        })
+    
+    # Game variables
+    pacman_dir = [0, 0]
+    score = 0
+    game_over = False
+    
+    # Game loop
+    while True:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            
+            # Handle key presses
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_LEFT:
+                    pacman_dir = [-1, 0]
+                elif event.key == pygame.K_RIGHT:
+                    pacman_dir = [1, 0]
+                elif event.key == pygame.K_UP:
+                    pacman_dir = [0, -1]
+                elif event.key == pygame.K_DOWN:
+                    pacman_dir = [0, 1]
+                elif event.key == pygame.K_r and game_over:
+                    return  # Restart game
+        
+        if not game_over:
+            # Move Pac-Man
+            new_x = pacman_pos[0] + pacman_dir[0] * PACMAN_SPEED
+            new_y = pacman_pos[1] + pacman_dir[1] * PACMAN_SPEED
+            
+            # Check for wall collision
+            grid_x = new_x // GRID_SIZE
+            grid_y = new_y // GRID_SIZE
+            
+            if (0 <= grid_x < WIDTH // GRID_SIZE and 
+                0 <= grid_y < HEIGHT // GRID_SIZE and 
+                maze[grid_y][grid_x] == 0):
+                pacman_pos = [new_x, new_y]
+            
+            # Check for dot collection
+            pacman_rect = pygame.Rect(pacman_pos[0] - GRID_SIZE // 2, 
+                                     pacman_pos[1] - GRID_SIZE // 2, 
+                                     GRID_SIZE, GRID_SIZE)
+            
+            for dot in dots[:]:
+                dot_rect = pygame.Rect(dot[0] - DOT_SIZE // 2, 
+                                      dot[1] - DOT_SIZE // 2, 
+                                      DOT_SIZE, DOT_SIZE)
+                if pacman_rect.colliderect(dot_rect):
+                    dots.remove(dot)
+                    score += 10
+            
+            # Move ghosts
+            for ghost in ghosts:
+                # Try to move in current direction
+                new_x = ghost['pos'][0] + ghost['dir'][0] * GHOST_SPEED
+                new_y = ghost['pos'][1] + ghost['dir'][1] * GHOST_SPEED
+                
+                grid_x = new_x // GRID_SIZE
+                grid_y = new_y // GRID_SIZE
+                
+                # If hitting a wall, change direction
+                if (grid_x < 0 or grid_x >= WIDTH // GRID_SIZE or 
+                    grid_y < 0 or grid_y >= HEIGHT // GRID_SIZE or 
+                    maze[grid_y][grid_x] == 1):
+                    ghost['dir'] = random.choice([(1, 0), (-1, 0), (0, 1), (0, -1)])
+                else:
+                    ghost['pos'] = [new_x, new_y]
+                
+                # Check for collision with Pac-Man
+                ghost_rect = pygame.Rect(ghost['pos'][0] - GRID_SIZE // 2, 
+                                        ghost['pos'][1] - GRID_SIZE // 2, 
+                                        GRID_SIZE, GRID_SIZE)
+                
+                if pacman_rect.colliderect(ghost_rect):
+                    game_over = True
+            
+            # Check win condition
+            if len(dots) == 0:
+                game_over = True
+        
+        # Draw everything
+        screen.fill(BG_COLOR)
+        
+        # Draw maze
+        for y in range(HEIGHT // GRID_SIZE):
+            for x in range(WIDTH // GRID_SIZE):
+                if maze[y][x] == 1:
+                    pygame.draw.rect(screen, WALL_COLOR, 
+                                    (x * GRID_SIZE, y * GRID_SIZE, 
+                                     GRID_SIZE, GRID_SIZE))
+        
+        # Draw dots
+        for dot in dots:
+            pygame.draw.circle(screen, DOT_COLOR, dot, DOT_SIZE)
+        
+        # Draw Pac-Man
+        pygame.draw.circle(screen, PACMAN_COLOR, pacman_pos, GRID_SIZE // 2)
+        
+        # Draw ghosts
+        for ghost in ghosts:
+            pygame.draw.circle(screen, GHOST_COLOR, ghost['pos'], GRID_SIZE // 2)
+        
+        # Draw score
+        font = pygame.font.SysFont(None, 36)
+        score_text = font.render(f"Score: {score}", True, (255, 255, 255))
+        screen.blit(score_text, (10, 10))
+        
+        # Game over text
+        if game_over:
+            if len(dots) == 0:
+                result_text = "You Win!"
+            else:
+                result_text = "Game Over!"
+            
+            font = pygame.font.SysFont(None, 72)
+            text = font.render(result_text, True, (255, 255, 255))
+            text_rect = text.get_rect(center=(WIDTH // 2, HEIGHT // 2))
+            screen.blit(text, text_rect)
+            
+            restart_font = pygame.font.SysFont(None, 36)
+            restart_text = restart_font.render("Press R to restart", True, (255, 255, 255))
+            restart_rect = restart_text.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 50))
+            screen.blit(restart_text, restart_rect)
+        
+        pygame.display.flip()
+        clock.tick(60)
+
+# Game loop
+while True:
+    game()
